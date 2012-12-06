@@ -2,6 +2,7 @@ package sbtrelease
 
 import sbt._
 import java.io.File
+import xml.XML
 
 trait Vcs {
   val commandName: String
@@ -119,4 +120,42 @@ object Git extends Vcs with GitLike {
   }
 
   private def pushTags = cmd("push", "--tags", trackingRemote)
+}
+
+object Subversion extends Vcs with GitLike {
+  val commandName = "svn"
+
+  protected val markerDirectory = ".svn"
+
+  def status = cmd("status")
+
+  def info(url: String = ".") = XML.loadString cmd("info", url, "--xml")
+
+  def trackingRemote: String = (info \ "entry" \ "url")(0).text
+
+  def currentRevision = (info \ "entry" \ "@revision")(0).text
+
+  def upstreamRevision = (info(trackingRemote) \ "entry" \ "@revision")(0).text
+
+  def currentHash = currentRevision
+
+  // FIXME this currently only works on "trunk"
+  def baseUrl: String = trackingRemote.take(trackingRemote.lastIndexOf("/") + 1)
+
+  def tagsUrl = baseUrl + "tags/"
+
+  def existsTag(name: String) = (cmd("ls", tagsUrl) !!).contains(name + "/")
+
+  def checkRemote(remote: String) = if (isBehindRemote) { status } else { cmd("status", "--show-updates")}
+
+  def tag(name: String, comment: String, force: Boolean = false) = cmd("copy", ".", tagsUrl + name, "-m", comment)
+
+  def hasUpstream = true
+
+  def isBehindRemote = currentRevision == upstreamRevision
+
+  def pushChanges = cmd("echo", "Subversion does not have a push step!")
+
+  def currentBranch = trackingRemote.stripPrefix((info \ "entry" \ "repository" \ "root")(0).text)
+
 }
